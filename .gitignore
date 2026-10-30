@@ -23,7 +23,7 @@ pnpm-lock.yaml
 AddIn/log/
 logs/
 
-# ---- 备份文件（已归档到 _backup/，不入库）----
+# ---- 备份 / 归档目录（本地保留，不入库）----
 *.bak
 *.bak-*
 *.new
@@ -31,17 +31,16 @@ logs/
 *.orig.bmp
 *~
 _backup/
+_reference/
 
-# ---- AI 迭代草稿 / 设计中间产物（可再生，不入库）----
-# miora 生成过程中的废弃稿（63MB）
-_reference/miora_中间产物/
-# 设计迭代草稿：gen2/gen3 是多轮 AI 出图试验，dance_src 是切片源帧
-jingyu-niang-design_assets/gen2/
-jingyu-niang-design_assets/gen3/
-jingyu-niang-design_assets/dance_src/
+# ---- 设计素材过程文件（本地保留，不入库）----
+# 设计工程画布与多轮 AI 出图草稿；成品在 jingyu-niang-assets/
+jingyu-niang-design_assets/
+jingyu-niang-design.miora
+*.miora.bak-*
 
-# ---- 第三方插件原始下载包（含重复 dll，12MB）----
-_reference/第三方插件原始包_本地歌词服务器/
+# ---- 参考图与效果截图（本地保留，不入库）----
+images/
 
 # ---- 运行时数据（用户个人数据，不入库）----
 Music.library

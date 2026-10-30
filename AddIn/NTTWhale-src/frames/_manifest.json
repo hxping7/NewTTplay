@@ -1,0 +1,110 @@
+[
+  {
+    "rc": 1,
+    "name": "idle",
+    "frames": 4,
+    "file": "idle.bmp"
+  },
+  {
+    "rc": 2,
+    "name": "walk",
+    "frames": 4,
+    "file": "walk.bmp"
+  },
+  {
+    "rc": 3,
+    "name": "feed",
+    "frames": 3,
+    "file": "feed.bmp"
+  },
+  {
+    "rc": 4,
+    "name": "eat",
+    "frames": 4,
+    "file": "eat.bmp"
+  },
+  {
+    "rc": 5,
+    "name": "sleep",
+    "frames": 4,
+    "file": "sleep.bmp"
+  },
+  {
+    "rc": 6,
+    "name": "happy",
+    "frames": 4,
+    "file": "happy.bmp"
+  },
+  {
+    "rc": 7,
+    "name": "sad",
+    "frames": 3,
+    "file": "sad.bmp"
+  },
+  {
+    "rc": 8,
+    "name": "work",
+    "frames": 4,
+    "file": "work.bmp"
+  },
+  {
+    "rc": 9,
+    "name": "music",
+    "frames": 4,
+    "file": "music.bmp"
+  },
+  {
+    "rc": 10,
+    "name": "ktv",
+    "frames": 4,
+    "file": "ktv.bmp"
+  },
+  {
+    "rc": 11,
+    "name": "angry",
+    "frames": 4,
+    "file": "angry.bmp"
+  },
+  {
+    "rc": 12,
+    "name": "swim",
+    "frames": 4,
+    "file": "swim.bmp"
+  },
+  {
+    "rc": 13,
+    "name": "greet",
+    "frames": 3,
+    "file": "greet.bmp"
+  },
+  {
+    "rc": 14,
+    "name": "drag",
+    "frames": 3,
+    "file": "drag.bmp"
+  },
+  {
+    "rc": 15,
+    "name": "shy",
+    "frames": 3,
+    "file": "shy.bmp"
+  },
+  {
+    "rc": 16,
+    "name": "think",
+    "frames": 3,
+    "file": "think.bmp"
+  },
+  {
+    "rc": 17,
+    "name": "proud",
+    "frames": 3,
+    "file": "proud.bmp"
+  },
+  {
+    "rc": 18,
+    "name": "dance",
+    "frames": 8,
+    "file": "dance.bmp"
+  }
+]
