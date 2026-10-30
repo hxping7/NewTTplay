@@ -20,8 +20,6 @@
 | `jingyu-niang-design_assets/` | 设计过程中的成品帧（含 8 帧舞蹈序列） |
 | `jingyu-niang-design.miora` | miora 设计工程文件 |
 | `images/deepseek/` | 参考图与效果截图 |
-| `_reference/` | 第三方插件原始包、miora 中间产物（归档备查） |
-
 ## 皮肤结构
 
 `.skn` 本质是 **ZIP 包**，内含：
@@ -78,10 +76,22 @@ y 52..188        纵向拉伸
 
 ## 目录约定
 
-- `_backup/` — 本地历史备份（**不入库**，已在 `.gitignore`）
-- `_reference/` — 第三方原始包与设计中间产物
-- `.workbuddy/` `.workbuddy-ai/` `.skinwork/` — 工作会话产物（不入库）
-- `Music.library` `PlayList/*.ttbl` — 用户个人数据（不入库）
+以下目录**仅保留在本地，不入库**（已在 `.gitignore`）：
+
+| 路径 | 内容 | 原因 |
+|---|---|---|
+| `_backup/` | 皮肤与配置的历史备份 | 版本库已有完整快照 |
+| `_reference/miora_中间产物/` | AI 出图废弃稿（63MB） | 可再生 |
+| `_reference/第三方插件原始包_本地歌词服务器/` | 第三方插件原始下载 zip（12MB） | 与 `AddIn/` 内容重复 |
+| `jingyu-niang-design_assets/gen2/` `gen3/` | 多轮 AI 出图试验稿（41MB） | 可再生 |
+| `jingyu-niang-design_assets/dance_src/` | 舞蹈序列切片源帧（19MB） | 成品在 `dance_f*.png` |
+| `.workbuddy/` `.workbuddy-ai/` `.skinwork/` | 工作会话产物 | 临时文件 |
+| `Music.library` `PlayList/*.ttbl` | 播放列表与曲库 | 用户个人数据 |
+| `AddIn/log/` `AddIn/lyrics-server/log/` | 运行日志 | 运行时产物 |
+
+> **为什么 PNG 占大头**：`jingyu-niang-assets/frames/` 的 90 张动画帧共 104MB。
+> 它们是带调色板的 8bit PNG，文件内部已用 deflate 压缩过，
+> Git 再压缩几乎无效（1388KB → 1378KB，只省 0.7%），所以仓库体积 ≈ 素材体积。
 
 ## 工具链备注
 
