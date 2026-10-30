@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<ttplayer 
+	version="5.7.9">
+	<Player 
+		PlayerWnd="934,255,1334,405" 
+		PlayerWnd2="966,0,1279,25" 
+		LyricWnd="1334,255,1734,574" 
+		LyricWnd2="1279,0,1479,25" 
+		EqualizerWnd="934,405,1334,531" 
+		PlayListWnd="934,405,1334,775" 
+		LyricVisible="1" 
+		EqualizerVisible="0" 
+		PlayListVisible="1"
+	/>
+	<Visual 
+		SpectrumTopColor="#7ea6ff" 
+		SpectrumBtmColor="#2b4bd8" 
+		SpectrumMidColor="#4d6bfe" 
+		SpectrumPeakColor="#cfe0ff" 
+		SpectrumWide="1" 
+		BlurSpeed="3" 
+		Blur="1" 
+		TextColor="#cfe0ff" 
+		Font="-12,0,0,0,400,0,0,0,1,0,0,4,0,Microsoft YaHei UI" 
+		BlurScopeColor="#4d6bfe"
+	/>
+	<Lyric 
+		Font="-12,0,0,0,400,0,0,0,1,0,0,4,0,Microsoft YaHei UI" 
+		TextColor="#9fb6ff" 
+		HilightColor="#ffffff" 
+		BkgndColor="#0e1a4a"
+	/>
+	<PlayList 
+		Font="-12,0,0,0,400,0,0,0,1,0,0,4,0,Microsoft YaHei UI" 
+		Color_Text="#cfe0ff" 
+		Color_Hilight="#ffffff" 
+		Color_Bkgnd="#0e1a4a" 
+		Color_Number="#8fa8e8" 
+		Color_Duration="#8fa8e8" 
+		Color_Select="#4d6bfe" 
+		Color_Bkgnd2="#14204f" 
+		CreateNewVerPlayList="0"
+	/>
+</ttplayer>

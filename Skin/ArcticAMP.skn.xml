@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<ttplayer 
+	version="5.7.9">
+	<Player 
+		PlayerWnd="278,295,553,411" 
+		PlayerWnd2="471,0,854,25" 
+		LyricWnd="553,295,828,643" 
+		LyricWnd2="0,0,0,0" 
+		EqualizerWnd="278,411,553,527" 
+		PlayListWnd="278,527,553,643" 
+		LyricVisible="1" 
+		EqualizerVisible="1" 
+		PlayListVisible="1"
+	/>
+	<Visual 
+		SpectrumTopColor="#ff0080" 
+		SpectrumBtmColor="#0080ff" 
+		SpectrumMidColor="#ffff00" 
+		SpectrumPeakColor="#ffffff" 
+		SpectrumWide="0" 
+		BlurSpeed="3" 
+		Blur="1" 
+		TextColor="#27435f" 
+		Font="-11,0,0,0,400,0,1,0,1,0,0,4,0,Segoe UI" 
+		BlurScopeColor="#00ffff"
+	/>
+	<Lyric 
+		Font="-14,0,0,0,400,0,0,0,134,3,2,4,34,微软雅黑" 
+		TextColor="#565c70" 
+		HilightColor="#2c2f38" 
+		BkgndColor="#959bad"
+	/>
+	<PlayList 
+		Font="-11,0,0,0,400,0,0,0,1,0,0,4,0,Segoe UI" 
+		Color_Text="#434856" 
+		Color_Hilight="#ffffff" 
+		Color_Bkgnd="#959bad" 
+		Color_Number="#ffffff" 
+		Color_Duration="#ffffff" 
+		Color_Select="#0078d7" 
+		Color_Bkgnd2="#81889e" 
+		CreateNewVerPlayList="0"
+	/>
+</ttplayer>

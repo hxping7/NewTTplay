@@ -1,0 +1,75 @@
+# ---- 操作系统 / 编辑器 ----
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+desktop.ini
+.DS_Store
+*.lnk
+
+# ---- 临时工作目录（WorkBuddy 会话产物、构建中间件）----
+.workbuddy/
+.workbuddy-ai/
+.skinwork/
+*.miora.bak-*
+
+# ---- 依赖 ----
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+.yarn/
+
+# ---- 日志 ----
+*.log
+AddIn/log/
+logs/
+
+# ---- 备份文件（已归档到 _backup/，不入库）----
+*.bak
+*.bak-*
+*.new
+*.nttp-bak
+*.orig.bmp
+*~
+_backup/
+
+# ---- AI 迭代草稿 / 设计中间产物（可再生，不入库）----
+# miora 生成过程中的废弃稿（63MB）
+_reference/miora_中间产物/
+# 设计迭代草稿：gen2/gen3 是多轮 AI 出图试验，dance_src 是切片源帧
+jingyu-niang-design_assets/gen2/
+jingyu-niang-design_assets/gen3/
+jingyu-niang-design_assets/dance_src/
+
+# ---- 第三方插件原始下载包（含重复 dll，12MB）----
+_reference/第三方插件原始包_本地歌词服务器/
+
+# ---- 运行时数据（用户个人数据，不入库）----
+Music.library
+*.ttbl
+*.m3u
+*.m3u8
+
+# ---- 歌词缓存 ----
+AddIn/lyrics-server/log/
+
+# ---- 编译产物 ----
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.user
+*.suo
+.vs/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# ---- 编辑器 ----
+.idea/
+.vscode/
+*.swp
