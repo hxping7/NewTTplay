@@ -21,10 +21,13 @@
 | `tools/imgtool/` | 素材构建管线（Node.js + sharp）：抠图、帧条带生成、logo 矢量化 |
 | `jingyu-niang-assets/` | 鲸鱼娘美术**成品素材包**：19 组动画循环的 PNG 帧序列 + GIF 预览 + 品牌 SVG |
 | `jingyu-niang-assets/frames/` | 90 张透明底 PNG 帧（17 状态图 + 73 相位帧），桌宠 `NTTWhale.exe` 的源资源 |
+| `jingyu-niang-assets/表情差分/` | 8 个 256×256 表情头像（开心/生气/委屈/惊讶/害羞/困倦/思考/傲娇）+ 总览表 |
+| `jingyu-niang-assets/三视图/` | 正面 / 正侧面 / 正背面设定稿，三视图等高共基线 |
+| `jingyu-niang-assets/周边样机/` | 6 件产品平铺样机（T恤/马克杯/亚克力立牌/抱枕/徽章/贴纸） |
 | `docs/` | 项目总体计划与交付说明 |
 
 > 设计过程文件（`jingyu-niang-design_assets/`、`jingyu-niang-design.miora`）、
-> 参考截图（`images/`）、归档备份（`_backup/` `_reference/`）**仅保留在本地，不入库** —— 详见下方「目录约定」。
+> 参考截图（`images/`）、归档备份（`_backup/` `_reference/`）**仅保留在本地，不入库**。
 
 ## 皮肤结构
 
@@ -94,30 +97,12 @@ mv NTTWhale.dat ../NTTWhale.exe
 先输出 `.dat` 再改名，是为了绕过国产杀软的编译期查杀。
 帧 BMP 由 `tools/imgtool/gen_pet_bmp.js` 从 `jingyu-niang-assets/frames/` 的 PNG 转换而来。
 
-## 目录约定
+交互：单击摸头 → 害羞；双击 → 被投喂；按住拖动 → 被拖拽（松手回待机）；
+右键菜单可手动指定各状态；平时由随机行为表按权重轮换全部 18 个状态。
 
-以下目录**仅保留在本地，不入库**（已在 `.gitignore`）：
+## 皮肤构建工具
 
-| 路径 | 内容 | 原因 |
-|---|---|---|
-| `images/` | 参考图与效果截图 | 过程产物 |
-| `jingyu-niang-design_assets/` | 设计过程的成品帧与 AI 出图草稿 | 过程产物，成品在 `jingyu-niang-assets/` |
-| `jingyu-niang-design.miora` | miora 设计工程画布 | 设计源文件 |
-| `_backup/` | 皮肤与配置的历史备份 | 版本库已有完整快照 |
-| `_reference/` | 第三方插件原始包、miora 中间产物 | 归档备查，内容重复或可再生 |
-| `.workbuddy/` `.workbuddy-ai/` `.skinwork/` | 工作会话产物 | 临时文件 |
-| `Music.library` `PlayList/*.ttbl` | 播放列表与曲库 | 用户个人数据 |
-| `AddIn/log/` `AddIn/lyrics-server/log/` | 运行日志 | 运行时产物 |
-
-> **为什么仓库里 PNG 占大头**：`jingyu-niang-assets/frames/` 的 90 张动画帧共 104MB。
-> 它们是带调色板的 8bit PNG，文件内部已用 deflate 压缩过，
-> Git 再压缩几乎无效（1388KB → 1378KB，只省 0.7%），所以仓库体积 ≈ 素材体积。
-> 这些帧是桌宠 `NTTWhale.exe` 的源资源，删了就无法重新编译，故必须入库。
-
-## 工具链备注
-
-本机 **没有 Pillow / ImageMagick / Inkscape / rsvg**，且 pip 无可用源，
-所以皮肤构建工具是自写的纯 Python：
+`tools/skin/` 为纯 Python、零依赖：
 
 - `skintool.py` — 24bit BMP 读写（`#ff00ff` 抠透明）
 - `pngio.py` — PNG 编解码（zlib 手写 chunk）
@@ -126,7 +111,7 @@ mv NTTWhale.dat ../NTTWhale.exe
   chrome.exe --headless=new --disable-gpu --hide-scrollbars \
     --default-background-color=00000000 --window-size=W,H --screenshot=out.png page.html
   ```
-  必须带 `--default-background-color=00000000` 才是透明底。
+  须带 `--default-background-color=00000000` 才能得到透明底。
 
 ## 致谢
 

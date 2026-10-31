@@ -45,6 +45,28 @@ cd tools/imgtool && npm install
 | `ds_logo_extract.js` / `ds_logo_alpha.js` | logo 抠图与透明通道提取 |
 | `skin_build.js` / `skinpipe.js` | 皮肤位图流水线 |
 | `build_scrollbar.js` | 滚动条样式 |
+| `expr_sheet_split.js` | 表情差分总览表 → 单个透明头像（泛洪抠图 + 行带切格 + 反合成去灰边） |
+| `clean_watermark.js` | 清除 AI 图右下角水印（逐行分位数基准） |
+| `expr_sheet_page.js` / `turnaround_page.js` / `merch_page.js` | 生成带中文标签的 HTML 版面 |
+
+### 运行方式
+
+`tools/imgtool` 目录没有装 `node_modules`，用 `NODE_PATH` 指向已装好的依赖：
+
+```bash
+NODE_PATH=./.workbuddy/imgtool/node_modules \
+  node tools/imgtool/expr_sheet_split.js <总览表.png> <输出目录> 256
+```
+
+### 去水印为什么不能一刀切
+
+AI 生成图的水印是**半透明白字**，只比背景亮 8~14 级：
+
+- 固定阈值（如"比背景亮 12 级"）会**正好卡在边界**，实心笔画被清掉、抗锯齿边留下，形成"鬼影"
+- 用"右下角整块填背景色"又会**误伤产品**（贴纸的白边、包装的高光会被当成水印抹掉）
+
+`clean_watermark.js` 的做法：**逐行**取该行区域内的亮度 25 分位作为背景基准，
+只替换明显更亮的像素。起点 `y` 要设在最下方产品之下、水印之上（例如周边图设 `y>=0.91H`）。
 
 ## 截图脚本（Windows）
 

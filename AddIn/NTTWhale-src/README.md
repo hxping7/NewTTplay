@@ -7,7 +7,7 @@
 | `whale.c` | 桌宠主程序（Win32 + GDI，18 种状态、69 帧动画） |
 | `whale.rc` | 资源脚本，把 18 组状态条带编成 RCDATA 1..18 |
 | `whale.ico` | 托盘/桌面图标 |
-| `frames/*.bmp` | 18 组状态横排条带（24bpp，96×N），由 `jingyu-niang-assets/frames/` 转换而来 |
+| `frames/*.bmp` | 18 组状态横排条带（24bpp，128×128/帧），由 `jingyu-niang-assets/frames/` 转换而来 |
 | `frames/_manifest.json` | 帧清单（每组帧数、帧率） |
 
 ## 编译
@@ -54,6 +54,6 @@ node gen_pet_bmp.js
 |---|---|---|
 | 单击 | `shy` | 捂脸害羞（比欢呼举碗更适合摸头反馈） |
 | 双击 | `feed` | 张嘴等投喂（不是自己吃饭） |
-| 拖拽 | `drag` | 双手上举悬空 |
+| 拖拽 | `drag` | 惊讶悬空，尾巴摇摆 |
 | 随机游走 | `walk` | 侧身帧，引擎水平镜像 |
 | 待机 | `L00_idle` 四帧循环 | 呼吸起伏，让最长驻状态也"活"起来 |
