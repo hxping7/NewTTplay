@@ -53,6 +53,10 @@ TTPlayer.xml
 AddIn/whale.ini
 # 歌词缓存索引：644 行 "mp3路径|0|lrc路径"，全是用户本地音乐库路径
 TTPlayer.rll
+# 歌词插件测试输出（含被测文件的艺人/标题）
+AddIn/lyrics-server/test_tag_out.txt
+# 脱敏规则（含真实待替换字符串），只保留 example 模板
+tools/privacy_rules.local.json
 
 # ---- 歌词缓存 ----
 AddIn/lyrics-server/log/
