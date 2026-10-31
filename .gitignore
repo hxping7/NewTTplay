@@ -51,6 +51,8 @@ Music.library
 TTPlayer.xml
 # 桌宠配置：仅记录窗口坐标，每次拖动都变
 AddIn/whale.ini
+# 歌词缓存索引：644 行 "mp3路径|0|lrc路径"，全是用户本地音乐库路径
+TTPlayer.rll
 
 # ---- 歌词缓存 ----
 AddIn/lyrics-server/log/
