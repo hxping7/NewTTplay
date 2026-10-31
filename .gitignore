@@ -42,6 +42,10 @@ jingyu-niang-design.miora
 # ---- 参考图与效果截图（本地保留，不入库）----
 images/
 
+# ---- IP 商业化素材（本地保留，不入库）----
+# 周边样机是卖 T 恤/马克杯用的，对桌宠与皮肤功能无帮助
+jingyu-niang-assets/周边样机/
+
 # ---- 运行时数据（用户个人数据，不入库）----
 Music.library
 *.ttbl

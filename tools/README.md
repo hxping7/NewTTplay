@@ -47,7 +47,7 @@ cd tools/imgtool && npm install
 | `build_scrollbar.js` | 滚动条样式 |
 | `expr_sheet_split.js` | 表情差分总览表 → 单个透明头像（泛洪抠图 + 行带切格 + 反合成去灰边） |
 | `clean_watermark.js` | 清除 AI 图右下角水印（逐行分位数基准） |
-| `expr_sheet_page.js` / `turnaround_page.js` / `merch_page.js` | 生成带中文标签的 HTML 版面 |
+| `expr_sheet_page.js` / `turnaround_page.js` | 生成带中文标签的 HTML 版面 |
 
 ### 运行方式
 

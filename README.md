@@ -23,7 +23,6 @@
 | `jingyu-niang-assets/frames/` | 90 张透明底 PNG 帧（17 状态图 + 73 相位帧），桌宠 `NTTWhale.exe` 的源资源 |
 | `jingyu-niang-assets/表情差分/` | 8 个 256×256 表情头像（开心/生气/委屈/惊讶/害羞/困倦/思考/傲娇）+ 总览表 |
 | `jingyu-niang-assets/三视图/` | 正面 / 正侧面 / 正背面设定稿，三视图等高共基线 |
-| `jingyu-niang-assets/周边样机/` | 6 件产品平铺样机（T恤/马克杯/亚克力立牌/抱枕/徽章/贴纸） |
 | `docs/` | 项目总体计划与交付说明 |
 
 > 设计过程文件（`jingyu-niang-design_assets/`、`jingyu-niang-design.miora`）、
