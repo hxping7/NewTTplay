@@ -86,3 +86,6 @@ venv/
 .idea/
 .vscode/
 *.swp
+
+# ---- build objects ----
+*.o

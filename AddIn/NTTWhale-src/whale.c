@@ -1,4 +1,4 @@
-/* NTTWhale - DeepSeek 胖鲸鱼娘桌面宠物 v13 (Win32, 单文件, 精灵内嵌资源)
+/* NTTWhale - DeepSeek 胖鲸鱼娘桌面宠物 v14 (Win32, 单文件, 精灵内嵌资源)
  * 窗口: 128x128 分层色键(品红)置顶工具窗
  * 状态机: 0待机(呼吸) 1走路 2被投喂 3自己吃饭 4睡觉 5开心 6不开心 7工作忙
  *         8听音乐 9K歌 10生气 11游泳 12问候 13被拖拽 14害羞 15思考 16傲娇
@@ -10,6 +10,11 @@
  * v13 性能版(2026-10-30): 跟随检测 2s→15s(原 2s 全进程快照是常驻内核负载,
  *       宿主侧歌词插件也改用本进程的 NTTWhalePet 互斥体判活, 与进程名快照等价);
  *       follow_tt 关闭时不再轮询。
+ * v14 动作平滑版(2026-10-31): 新增帧序列播放(seq, 支持任意顺序/ping-pong 循环) ——
+ *       walk 补成 7 帧 12 相位完整步循环(L05_walk_4..6 为区域镜像合成的反相摆帧,
+ *       生成脚本 tools/imgtool/make_walk_mirror.js); 消除 3→0 端碗瞬移回跳;
+ *       drag 改 0,1,2,1 四槽左右摆 + 220ms/帧(原 110ms 三帧直循环像抽搐);
+ *       右键菜单补「自己吃饭」入口(原 IDM_EATSELF 有处理器无菜单项, eat 状态为死代码)。
  * 资源: 1..18 RCDATA = idle/walk/feed/eat/sleep/happy/sad/work/music/ktv/angry/swim/greet/drag/shy/think/proud/dance.bmp
  *       横排条带, 单帧 128x128, 品红键控
  * 编译(绕过火绒编译查杀): gcc -o NTTWhale.dat ... && ren NTTWhale.dat NTTWhale.exe
@@ -53,6 +58,8 @@ typedef struct {
     HDC mdc[2];
     int frames;
     int ticks;            /* 每帧占几个 tick(110ms), 越大越慢 */
+    int nseq;             /* 播放序列长度(<=12), 默认=frames 即顺序循环 */
+    unsigned char seq[12];/* 播放序列: 存条带帧号, ping-pong 等非顺序循环用 */
 } Sheet;
 
 static Sheet g_sh[NST];  /* 0..17 见文件头 */
@@ -115,7 +122,18 @@ static int sheet_load(int resId, int frames, int ticks) {
     }
     g_sh[resId - 1].frames = frames;
     g_sh[resId - 1].ticks = ticks > 0 ? ticks : 1;
+    g_sh[resId - 1].nseq = frames;
+    for (int f = 0; f < frames && f < 12; f++) g_sh[resId - 1].seq[f] = (unsigned char)f;
     return 1;
+}
+
+/* 覆盖某状态的帧播放序列(ping-pong 等非顺序循环); 值必须落在条带帧号范围内 */
+static void sheet_seq(int resId, const unsigned char *seq, int n) {
+    if (n <= 0 || n > 12) return;
+    for (int i = 0; i < n; i++)
+        if (seq[i] >= g_sh[resId - 1].frames) return;
+    g_sh[resId - 1].nseq = n;
+    memcpy(g_sh[resId - 1].seq, seq, (size_t)n);
 }
 
 /* ---------------- 状态机 ---------------- */
@@ -125,7 +143,7 @@ static void set_state(int s, int framesLeft) {
     g_tick = 0;
     g_acc = 0;
     g_stateLeft = framesLeft;
-    g_frames = g_sh[s].frames;
+    g_frames = g_sh[s].nseq;
     InvalidateRect(g_wnd, NULL, FALSE);
 }
 
@@ -251,7 +269,7 @@ static void tray_del(void) {
 /* ---------------- 绘制 ---------------- */
 static void paint(HDC dc) {
     Sheet *sh = &g_sh[g_state];
-    int sx = g_frame * FRM;
+    int sx = sh->seq[g_frame] * FRM;
     int k = (g_state == 1 && g_dir < 0) ? 1 : 0;
     BitBlt(dc, 0, 0, FRM, FRM, sh->mdc[k], sx, 0, SRCCOPY);
 }
@@ -287,7 +305,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         /* 按当前状态的 ticks 决定何时推进到下一帧 */
         if (++g_acc >= g_sh[g_state].ticks) {
             g_acc = 0;
-            g_frame = (g_frame + 1) % g_frames;
+            g_frame = (g_frame + 1) % g_sh[g_state].nseq;
         }
         if (g_state == 1) wander();
         InvalidateRect(h, NULL, FALSE);
@@ -359,7 +377,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         POINT pt;
         GetCursorPos(&pt);
         if (abs(pt.x - g_dragPt.x) + abs(pt.y - g_dragPt.y) > 4) {
-            /* 首次判定为拖动 → 切到「被拖拽」状态(双手上举悬空) */
+            /* 首次判定为拖动 → 切到「被拖拽」状态(惊讶悬空, 尾巴摇摆) */
             if (!g_dragMoved) { g_dragMoved = 1; set_state(13, 9999); }
         }
         SetWindowPos(h, NULL, pt.x - g_dragOff.x, pt.y - g_dragOff.y,
@@ -383,6 +401,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         HMENU sub = CreatePopupMenu();
         HMENU mn = CreatePopupMenu();
         AppendMenuW(mn, MF_STRING, IDM_FEED, L"喂饭");
+        AppendMenuW(mn, MF_STRING, IDM_EATSELF, L"自己吃饭");
         AppendMenuW(mn, MF_STRING, IDM_SLEEP, L"睡觉");
         AppendMenuW(mn, MF_STRING, IDM_PLAY, L"玩耍");
         AppendMenuW(sub, MF_STRING, IDM_SAD, L"不开心");
@@ -449,7 +468,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE prev, LPSTR cmd, int show) {
     /* 精灵加载(任一失败则退出) —— 帧数须与 frames 子目录里各 bmp 的实际帧数一致 */
     /* ticks = 每帧占几个 110ms tick: 呼吸/静态慢, 动作快 */
     if (!sheet_load(1, 4, 2))  return 1;   /* idle    呼吸 4 帧 x220ms */
-    if (!sheet_load(2, 4, 1))  return 1;   /* walk    迈腿 4 帧 x110ms */
+    if (!sheet_load(2, 7, 1))  return 1;   /* walk    端碗碎步 7 帧 x110ms(seq 12 相位) */
     if (!sheet_load(3, 3, 2))  return 1;   /* feed    张嘴等投喂 3 帧 x220ms */
     if (!sheet_load(4, 4, 1))  return 1;   /* eat     吃饭 4 帧 x110ms */
     if (!sheet_load(5, 4, 3))  return 1;   /* sleep   睡觉呼吸 4 帧 x330ms */
@@ -461,11 +480,17 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE prev, LPSTR cmd, int show) {
     if (!sheet_load(11, 4, 1)) return 1;   /* angry   生气 4 帧 x110ms */
     if (!sheet_load(12, 4, 2)) return 1;   /* swim    游泳 4 帧 x220ms */
     if (!sheet_load(13, 3, 2)) return 1;   /* greet   问候挥手 3 帧 x220ms */
-    if (!sheet_load(14, 3, 1)) return 1;   /* drag    被拖拽摇摆 3 帧 x110ms */
+    if (!sheet_load(14, 3, 2)) return 1;   /* drag    被拖拽摇摆 3 姿态 x220ms(seq 4 槽) */
     if (!sheet_load(15, 3, 2)) return 1;   /* shy     害羞 3 帧 x220ms */
     if (!sheet_load(16, 3, 3)) return 1;   /* think   思考 3 帧 x330ms */
     if (!sheet_load(17, 3, 2)) return 1;   /* proud   傲娇得意 3 帧 x220ms */
     if (!sheet_load(18, 8, 1)) return 1;   /* dance   摇尾巴跳舞 8 帧 x110ms */
+
+    /* 帧播放序列覆盖: 完整步循环 = 右摆出去 → 回中 → 左摆出去 → 回中 */
+    { static const unsigned char sq_walk[] = { 0, 1, 2, 3, 2, 1, 0, 4, 5, 6, 5, 4 };
+      sheet_seq(2, sq_walk, 12); }         /* walk  12 相位 x110ms, 4..6 为镜像反相摆帧 */
+    { static const unsigned char sq_drag[] = { 0, 1, 2, 1 };
+      sheet_seq(14, sq_drag, 4); }         /* drag  悬空摇摆: 左右摆各经中间帧, 4 槽 x220ms */
 
     char exe[MAX_PATH];
     GetModuleFileNameA(NULL, exe, MAX_PATH);

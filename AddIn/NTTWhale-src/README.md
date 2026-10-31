@@ -4,7 +4,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `whale.c` | 桌宠主程序（Win32 + GDI，18 种状态、69 帧动画） |
+| `whale.c` | 桌宠主程序（Win32 + GDI，18 种状态 72 帧；帧序列播放——walk 12 相位步循环、drag 四槽左右摆） |
 | `whale.rc` | 资源脚本，把 18 组状态条带编成 RCDATA 1..18 |
 | `whale.ico` | 托盘/桌面图标 |
 | `frames/*.bmp` | 18 组状态横排条带（24bpp，128×128/帧），由 `jingyu-niang-assets/frames/` 转换而来 |

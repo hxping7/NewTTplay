@@ -20,7 +20,7 @@
 | `tools/skin/` | 皮肤位图构建工具（纯 Python，零依赖）：BMP/PNG 编解码、九宫格拉伸仿真、logo 变体、打包 |
 | `tools/imgtool/` | 素材构建管线（Node.js + sharp）：抠图、帧条带生成、logo 矢量化 |
 | `jingyu-niang-assets/` | 鲸鱼娘美术**成品素材包**：19 组动画循环的 PNG 帧序列 + GIF 预览 + 品牌 SVG |
-| `jingyu-niang-assets/frames/` | 90 张透明底 PNG 帧（17 状态图 + 73 相位帧），桌宠 `NTTWhale.exe` 的源资源 |
+| `jingyu-niang-assets/frames/` | 93 张透明底 PNG 帧（17 状态图 + 76 相位帧），桌宠 `NTTWhale.exe` 的源资源 |
 | `jingyu-niang-assets/表情差分/` | 8 个 256×256 表情头像（开心/生气/委屈/惊讶/害羞/困倦/思考/傲娇）+ 总览表 |
 | `jingyu-niang-assets/三视图/` | 正面 / 正侧面 / 正背面设定稿，三视图等高共基线 |
 | `docs/` | 项目总体计划与交付说明 |

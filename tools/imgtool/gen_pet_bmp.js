@@ -13,7 +13,7 @@ const FILL = 110;                   // 角色高度目标像素
 
 const STATES = [
   { rc: 1,  name: 'idle',  files: ['L00_idle_0', 'L00_idle_1', 'L00_idle_2', 'L00_idle_3'] },
-  { rc: 2,  name: 'walk',  files: ['L05_walk_0', 'L05_walk_1', 'L05_walk_2', 'L05_walk_3'] },
+  { rc: 2,  name: 'walk',  files: ['L05_walk_0', 'L05_walk_1', 'L05_walk_2', 'L05_walk_3', 'L05_walk_4', 'L05_walk_5', 'L05_walk_6'] },
   { rc: 3,  name: 'feed',  files: ['L12_feed_0', 'L12_feed_1', 'L12_feed_2'] },
   { rc: 4,  name: 'eat',   files: ['L07_eat_0', 'L07_eat_1', 'L07_eat_2', 'L07_eat_3'] },
   { rc: 5,  name: 'sleep', files: ['L06_sleep_0', 'L06_sleep_1', 'L06_sleep_2', 'L06_sleep_3'] },
