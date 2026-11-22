@@ -33,8 +33,8 @@
 
 #define FRM 128
 #define NST 18
-#define BUB_W 320                   /* 气泡窗宽 */
-#define BUB_H 62                    /* 气泡窗高(含下方尖角) */
+#define BUB_W 340                   /* 气泡窗宽 */
+#define BUB_H 78                    /* 气泡窗高(含下方尖角) */
 #define WM_TRAY (WM_USER + 200)
 #define WM_SETSTATE (WM_APP + 1)   /* 外部可发此消息按状态号切换动画: wParam=状态号(0..17), lParam=驻留帧数 */
 #define ID_TRAY 7
@@ -257,35 +257,119 @@ static LRESULT CALLBACK BubbleProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_PAINT) {
         PAINTSTRUCT ps;
         HDC dc = BeginPaint(h, &ps);
-        /* 圆角气泡 + 底部尖角 + 淡蓝描边 */
-        HBRUSH br = CreateSolidBrush(RGB(255, 255, 255));
-        HPEN pen = CreatePen(PS_SOLID, 1, RGB(120, 160, 205));
-        HBRUSH oldBr = (HBRUSH)SelectObject(dc, br);
-        HPEN oldPen = (HPEN)SelectObject(dc, pen);
-        RoundRect(dc, 6, 4, BUB_W - 6, BUB_H - 16, 12, 12);
-        POINT tri[3] = { { BUB_W / 2 - 10, BUB_H - 18 },
-                         { BUB_W / 2 + 10, BUB_H - 18 },
-                         { BUB_W / 2,      BUB_H - 4  } };
-        HBRUSH br2 = CreateSolidBrush(RGB(255, 255, 255));
-        HBRUSH oldBr2 = (HBRUSH)SelectObject(dc, br2);
+        RECT whole;
+        GetClientRect(h, &whole);
+
+        /* 关键: 先铺满品红作为透明底。色键只扣品红, 不铺会露出默认黑底。 */
+        HBRUSH key = CreateSolidBrush(RGB(255, 0, 255));
+        FillRect(dc, &whole, key);
+        DeleteObject(key);
+
+        const int L = 10, T = 8, R = BUB_W - 10, B = BUB_H - 20;
+
+        /* 柔和阴影: 淡蓝灰圆角, 下移 4px 右移 3px */
+        {
+            HBRUSH sh = CreateSolidBrush(RGB(176, 200, 226));
+            HPEN nopen = CreatePen(PS_NULL, 0, 0);
+            HBRUSH ob = (HBRUSH)SelectObject(dc, sh);
+            HPEN op = (HPEN)SelectObject(dc, nopen);
+            RoundRect(dc, L + 3, T + 4, R + 3, B + 4, 18, 18);
+            POINT s[3] = { { BUB_W / 2 - 10, B + 2 }, { BUB_W / 2 + 10, B + 2 },
+                           { BUB_W / 2, BUB_H - 1 } };
+            BeginPath(dc);
+            MoveToEx(dc, s[0].x, s[0].y, NULL);
+            LineTo(dc, s[1].x, s[1].y);
+            LineTo(dc, s[2].x, s[2].y);
+            CloseFigure(dc);
+            EndPath(dc);
+            FillPath(dc);
+            SelectObject(dc, op); SelectObject(dc, ob);
+            DeleteObject(nopen); DeleteObject(sh);
+        }
+
+        /* 主体裁剪区: 圆角矩形做路径, 后续渐变只在其中画 */
         BeginPath(dc);
-        MoveToEx(dc, tri[0].x, tri[0].y, NULL);
-        LineTo(dc, tri[1].x, tri[1].y);
-        LineTo(dc, tri[2].x, tri[2].y);
-        CloseFigure(dc);
+        RoundRect(dc, L, T, R, B, 18, 18);
         EndPath(dc);
-        FillPath(dc);
-        SelectObject(dc, oldBr2);
-        DeleteObject(br2);
-        SelectObject(dc, oldPen);
-        SelectObject(dc, oldBr);
-        DeleteObject(pen);
-        DeleteObject(br);
+        SelectClipPath(dc, RGN_COPY);
+
+        /* 淡蓝→白 竖向渐变(色带模拟, 每 3px 一条) */
+        {
+            int hh = B - T;
+            for (int y = T; y < B; y += 3) {
+                int t = (y - T) * 255 / (hh > 0 ? hh : 1);
+                int rr = 234 + (255 - 234) * t / 255;
+                int gg = 243 + (255 - 243) * t / 255;
+                int bb = 253 + (255 - 253) * t / 255;
+                HBRUSH band = CreateSolidBrush(RGB(rr, gg, bb));
+                RECT brc = { L, y, R, y + 3 };
+                FillRect(dc, &brc, band);
+                DeleteObject(band);
+            }
+        }
+        /* 顶部一条高光 */
+        {
+            HBRUSH hl = CreateSolidBrush(RGB(255, 255, 255));
+            RECT hrc = { L, T, R, T + 2 };
+            FillRect(dc, &hrc, hl);
+            DeleteObject(hl);
+        }
+        /* 右上角鲸鱼喷水印记: 3 个小水滴圆点(淡蓝), 放角落不抢文字 */
+        {
+            HBRUSH dot = CreateSolidBrush(RGB(140, 185, 228));
+            HBRUSH ob = (HBRUSH)SelectObject(dc, dot);
+            HPEN nopen = CreatePen(PS_NULL, 0, 0);
+            HPEN op = (HPEN)SelectObject(dc, nopen);
+            Ellipse(dc, R - 34, T + 10, R - 28, T + 16);
+            Ellipse(dc, R - 26, T + 6,  R - 20, T + 12);
+            Ellipse(dc, R - 18, T + 11, R - 12, T + 17);
+            SelectObject(dc, op); SelectObject(dc, ob);
+            DeleteObject(nopen); DeleteObject(dot);
+        }
+        SelectClipRgn(dc, NULL);
+
+        /* 描边: 外浅内深双层圆角 */
+        {
+            HPEN outer = CreatePen(PS_SOLID, 2, RGB(110, 160, 215));
+            HPEN inner = CreatePen(PS_SOLID, 1, RGB(165, 200, 235));
+            HBRUSH nullbr = (HBRUSH)GetStockObject(NULL_BRUSH);
+            HBRUSH ob = (HBRUSH)SelectObject(dc, nullbr);
+            HPEN op = (HPEN)SelectObject(dc, outer);
+            RoundRect(dc, L, T, R, B, 18, 18);
+            SelectObject(dc, inner);
+            RoundRect(dc, L + 2, T + 2, R - 2, B - 2, 16, 16);
+            /* 尖角: 淡蓝填充 + 描边 */
+            POINT tri[3] = { { BUB_W / 2 - 10, B - 2 }, { BUB_W / 2 + 10, B - 2 },
+                             { BUB_W / 2, BUB_H - 3 } };
+            HBRUSH tb = CreateSolidBrush(RGB(240, 248, 255));
+            SelectObject(dc, tb);
+            SelectObject(dc, outer);
+            BeginPath(dc);
+            MoveToEx(dc, tri[0].x, tri[0].y, NULL);
+            LineTo(dc, tri[1].x, tri[1].y);
+            LineTo(dc, tri[2].x, tri[2].y);
+            CloseFigure(dc);
+            EndPath(dc);
+            FillPath(dc);
+            BeginPath(dc);
+            MoveToEx(dc, tri[0].x, tri[0].y, NULL);
+            LineTo(dc, tri[1].x, tri[1].y);
+            LineTo(dc, tri[2].x, tri[2].y);
+            CloseFigure(dc);
+            EndPath(dc);
+            StrokePath(dc);
+            RECT cap = { tri[0].x + 2, B - 2, tri[1].x - 2, B + 1 };
+            HBRUSH capbr = CreateSolidBrush(RGB(240, 248, 255));
+            FillRect(dc, &cap, capbr);
+            DeleteObject(capbr); DeleteObject(tb);
+            SelectObject(dc, op); SelectObject(dc, ob);
+            DeleteObject(inner); DeleteObject(outer);
+        }
         if (g_bubText[0]) {
             HFONT oldFont = (HFONT)SelectObject(dc, g_bubFont);
-            SetTextColor(dc, RGB(30, 45, 80));
+            SetTextColor(dc, RGB(30, 62, 105));
             SetBkMode(dc, TRANSPARENT);
-            RECT rc = { 10, 6, BUB_W - 10, BUB_H - 18 };
+            RECT rc = { L + 14, T + 6, R - 14, B - 4 };  /* 真正居中 */
             DrawTextW(dc, g_bubText, -1, &rc,
                       DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
             SelectObject(dc, oldFont);
