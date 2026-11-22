@@ -14,7 +14,7 @@
 | `TTPlayer.exe` | 播放器主程序（原版，未修改） |
 | `Skin/DeepSeekWhale.skn` | **主皮肤包**，深蓝 + 鲸鱼主题，含主窗/歌词窗/均衡器/播放列表四个窗口的美术 |
 | `Skin/DeepSeekWhale-var*.skn` | 播放列表右上角 logo 的四个配色变体（渐变蓝 / 扁平 / 辉光 / 剪影） |
-| `AddIn/NTTWhale.exe` | 鲸鱼娘桌面宠物，18 种状态动画 + 气泡台词 + 好感度记忆 + 歌曲类型情绪联动（听歌时按歌名切换跳舞/伤心/害羞…） |
+| `AddIn/NTTWhale.exe` | 鲸鱼娘桌面宠物，18 种状态动画 + 气泡台词 + 好感度记忆 + 音乐人格（读音频标签的真实曲风 + 喜好评分，有选择地反应） |
 | `AddIn/NTTWhale-src/` | 桌宠**完整源码**（`whale.c` + `whale.rc` + 18 组状态 BMP），可重新编译 |
 | `AddIn/lyrics-server/` | 本地歌词服务器 + `ttp_lrcsh` 插件源码（Node.js + C） |
 | `tools/skin/` | 皮肤位图构建工具（纯 Python，零依赖）：BMP/PNG 编解码、九宫格拉伸仿真、logo 变体、打包 |
@@ -89,12 +89,16 @@ y 52..188        纵向拉伸
 ```bash
 cd AddIn/NTTWhale-src
 D:/mingw32/bin/windres.exe --input-format=rc -O coff -i whale.rc -o whale_res.o
-D:/mingw32/bin/gcc.exe -m32 -O1 -mwindows -o NTTWhale.dat whale.c whale_res.o -lgdi32 -luser32 -lshell32
+D:/mingw32/bin/gcc.exe -m32 -O1 -mwindows -o NTTWhale.dat whale.c music_brain.c whale_res.o -lgdi32 -luser32 -lshell32
 mv NTTWhale.dat ../NTTWhale.exe
 ```
 
 先输出 `.dat` 再改名，是为了绕过国产杀软的编译期查杀。
 帧 BMP 由 `tools/imgtool/gen_pet_bmp.js` 从 `jingyu-niang-assets/frames/` 的 PNG 转换而来。
+
+音乐人格的喜好清单在 `whale.ini.example`（复制为 `AddIn/whale.ini`），
+她读音频文件的 ID3/FLAC 标签判断真实曲风，配合喜好和心情决定是否反应——
+不是按歌名关键词机械触发。
 
 交互：单击摸头 → 害羞；双击 → 被投喂；按住拖动 → 被拖拽（松手回待机）；
 右键菜单可手动指定各状态；平时由随机行为表按权重轮换全部 18 个状态。

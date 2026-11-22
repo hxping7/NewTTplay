@@ -4,7 +4,9 @@
 
 | 文件 | 说明 |
 |---|---|
-| `whale.c` | 桌宠主程序（Win32 + GDI，18 种状态；v15 新增气泡台词、好感度记忆、歌曲情绪联动） |
+| `whale.c` | 桌宠主程序（Win32 + GDI，18 种状态 + 气泡台词 + 见面记忆） |
+| `music_brain.c` | **v16 音乐人格**：曲库索引、音频标签读取、喜好评分、歌曲记忆 |
+| `whale.ini.example` | 配置模板（喜好清单/曲风偏好说明），复制为 `AddIn/whale.ini` |
 | `whale.rc` | 资源脚本，把 18 组状态条带编成 RCDATA 1..18 |
 | `whale.ico` | 托盘/桌面图标 |
 | `frames/*.bmp` | 18 组状态横排条带（24bpp，128×128/帧），由 `jingyu-niang-assets/frames/` 转换而来 |
@@ -17,7 +19,7 @@
 ```bash
 cd AddIn/NTTWhale-src
 D:/mingw32/bin/windres.exe --input-format=rc -O coff -i whale.rc -o whale_res.o
-D:/mingw32/bin/gcc.exe -m32 -O1 -mwindows -o NTTWhale.dat whale.c whale_res.o -lgdi32 -luser32 -lshell32
+D:/mingw32/bin/gcc.exe -m32 -O1 -mwindows -o NTTWhale.dat whale.c music_brain.c whale_res.o -lgdi32 -luser32 -lshell32
 mv NTTWhale.dat ../NTTWhale.exe
 ```
 
@@ -77,13 +79,32 @@ node gen_pet_bmp.js
 
 好感度还会影响随机行为：≥75 时更常主动问候，<25 时更常不开心。
 
-### 3. 歌曲类型 → 情绪联动
-每 1.6 秒读一次歌词插件当日日志 `AddIn/lyrics-server/log/YYYY-MM-DD.txt`，
-取最后一条 `搜索 歌手：X  歌名：Y`。**不需要改插件 DLL、不走 HTTP**。
+### 3. v16 音乐人格（取代 v15 的关键词映射）
 
-- 切歌时气泡显示 `♪ 歌名 · 情绪短句`，并切到对应状态
-- 关键词映射：DJ/舞→跳舞、摇滚/燃→生气(燃)、失恋/眼泪→不开心、爱/甜→害羞、
-  K歌/演唱会→K歌、海/浪/鱼/鲸→游泳、夜/摇篮→睡觉、雨/月光/钢琴→思考
-- 连续 40 次读不到日志（约 1 分钟）自动清除歌名状态
+v15 用歌名关键词猜类型（`爱`→害羞、`DJ`→跳舞）——这是错的：
+歌名不反映曲风，而且每首都反应 = 触发器，不是角色。
+
+v16 让她成为**有喜好的挑剔听众**：
+
+| 信号 | 来源 | 用途 |
+|---|---|---|
+| 歌手 / 歌名 | 歌词插件当日日志 `搜索 歌手：X 歌名：Y` | 完整、不滚动，实时切歌 |
+| 曲风 Genre / BPM | 音频文件的 ID3v1/v2、FLAC Vorbis 标签 | **真实曲风，不猜歌名** |
+| 完整文件路径 | `Music.library`（TTBL）按歌名定位，约 1 万首 | 读标签用 |
+| 播放行为 | 记忆表的播放次数/被摸次数 | 新鲜度与关联记忆 |
+
+**决策公式**：`喜好(歌手±45 / 曲风±20) × 心情 × 新鲜度(+15/-12) × 关联记忆(+20)`，
+
+- 三级反应：**沉默**（大多数歌）/ **轻微**（只冒一句）/ **强烈**（切状态+气泡）
+- 心情由好感度和时段决定：兴奋阈值低、低落阈值高
+- 喜欢的歌手听第 4 遍会说"又来了，换首嘛~"；你在某歌时摸过她多次，
+  下次她会说"这是…我们那首歌吧？"
+- 每首歌的记忆存 `whale.ini` 的 `songN`，上限 200 首
+
+配置喜好见 `whale.ini.example`。初始值由曲库统计推断（梁静茹 231 首、
+光良 177、周杰伦 57；曲风 Rock/Blues/Funk 居多），可随时编辑。
+
+> 为什么不用 TTPlayer 窗口标题：实测标题是无缝滚动 marquee，
+> 同一首歌轮流显示不同片段，无法可靠还原完整歌名。
 
 > 插件不运行时不影响桌宠，只是没有歌曲联动。

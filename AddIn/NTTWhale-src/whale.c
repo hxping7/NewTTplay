@@ -93,8 +93,22 @@ static int g_aff;                   /* 好感度 0..100 */
 static int g_lastDay;               /* 上次见面的日期序号(用于久别问候) */
 static wchar_t g_lastSong[200];     /* 上次检测到的歌名(切歌判定) */
 static int g_songLeft;              /* 歌曲情绪驻留 tick */
-static int g_logStale;              /* 连续读不到新日志的计数(>阈值则清歌名) */
+static int g_logStale;              /* 连续读不到日志的计数(>阈值则清歌名) */
 static char g_logDir[MAX_PATH];     /* 歌词插件日志目录 */
+
+/* v16 音乐人格(music_brain.c) 接口 */
+typedef struct {
+    int level;                  /* 0沉默 1轻微 2强烈 */
+    int state;                  /* 强烈反应的目标状态号 */
+    wchar_t text[200];
+} BrainReaction;
+void brain_init(const char *iniPathUtf8, const char *libPathUtf8, int aff);
+BrainReaction brain_on_song(const wchar_t *artist, const wchar_t *title);
+void brain_on_pet(void);
+void brain_parse_title(const wchar_t *title, wchar_t *artist, size_t asz,
+                       wchar_t *song, size_t sz);
+void brain_set_aff(int aff);
+void brain_save_all(void);
 
 /* 前向声明(状态机 rand_behavior 早于台词/歌曲函数定义) */
 static void say_greet(void);
@@ -335,6 +349,7 @@ static void aff_change(int d) {
     g_aff += d;
     if (g_aff < 0) g_aff = 0;
     if (g_aff > 100) g_aff = 100;
+    brain_set_aff(g_aff);
 }
 
 /* ---- 日期序号: 只用于判断"隔了几天" ---- */
@@ -343,8 +358,14 @@ static int day_no(void) {
     return (int)(st.wYear * 372 + st.wMonth * 31 + st.wDay);
 }
 
-/* ---- 歌词插件日志: 取最后一条"搜索 歌手：X 歌名：Y" ---- */
-static int song_read(wchar_t *artist, size_t asz, wchar_t *title, size_t tsz) {
+/* v16: 歌手/歌名从歌词插件日志取(完整、不滚动), 曲风从音频标签读。
+ * TTPlayer 窗口标题是无缝滚动 marquee(实测同一首歌轮流显示不同片段),
+ * 无法可靠还原完整歌名, 故不作数据源。
+ *
+ * 插件日志路径: exe 在 AddIn\, 日志在 AddIn\lyrics-server\log\YYYY-MM-DD.txt
+ * 取最后一条 "搜索 歌手：X  歌名：Y" —— 这是宿主传给插件的完整元数据。
+ */
+static int song_read_log(wchar_t *artist, size_t asz, wchar_t *title, size_t tsz) {
     SYSTEMTIME st; GetLocalTime(&st);
     char path[MAX_PATH];
     _snprintf(path, sizeof path, "%s\\%04d-%02d-%02d.txt",
@@ -354,7 +375,6 @@ static int song_read(wchar_t *artist, size_t asz, wchar_t *title, size_t tsz) {
     if (f == INVALID_HANDLE_VALUE) return 0;
     DWORD sz = GetFileSize(f, NULL);
     if (sz <= 0 || sz > 4 * 1024 * 1024) { CloseHandle(f); return 0; }
-    /* 从尾部往前读 32KB, 找最后一条歌名行 */
     DWORD back = sz > 32768 ? 32768 : sz;
     SetFilePointer(f, (LONG)(sz - back), NULL, FILE_BEGIN);
     char *buf = (char *)malloc(back + 1);
@@ -363,8 +383,6 @@ static int song_read(wchar_t *artist, size_t asz, wchar_t *title, size_t tsz) {
     ReadFile(f, buf, back, &rd, NULL);
     CloseHandle(f);
     buf[rd] = 0;
-
-    /* 逐行扫描, 记录最后一条匹配的 */
     char *best = NULL;
     char *p = buf;
     while (p && *p) {
@@ -374,89 +392,54 @@ static int song_read(wchar_t *artist, size_t asz, wchar_t *title, size_t tsz) {
         p = eol ? eol + 1 : NULL;
     }
     if (!best) { free(buf); return 0; }
-
     char *ta = strstr(best, "搜索 歌手：") + strlen("搜索 歌手：");
     char *tt = strstr(best, "歌名：") + strlen("歌名：");
-    /* 截断到行尾 */
-    char *ea = strchr(ta, '\r'); if (!ea) ea = strchr(ta, '\n');
-    char *et = strchr(tt, '\r'); if (!et) et = strchr(tt, '\n');
+    /* artist 在 "歌名：" 前截断(日志里歌手与歌名在同一行, 中间还可能有多余空格) */
+    char *ea = strstr(ta, "歌名：");
     if (ea) *ea = 0;
+    char *et = strstr(tt, "\r"); if (!et) et = strchr(tt, '\n');
     if (et) *et = 0;
-    /* UTF-8 → UTF-16 (日志里的中文是 UTF-8) */
+    /* trim 尾部空格 */
+    while (ea && ea > ta && ea[-1] == ' ') *(--ea) = 0;
     MultiByteToWideChar(CP_UTF8, 0, ta, -1, artist, (int)asz);
     MultiByteToWideChar(CP_UTF8, 0, tt, -1, title, (int)tsz);
     free(buf);
     return title[0] != 0;
 }
 
-/* ---- 歌名清洗: 去掉 "歌手 - " 前缀与音质/版本后缀 ---- */
-static void song_clean(wchar_t *t) {
-    wchar_t *dash = wcsstr(t, L" - ");
-    if (dash && !wcsstr(dash + 3, L" - ")) {
-        /* 仅在 " - " 之后还有内容时视为 歌手-歌名 */
-        if (dash[3]) wcsncpy(t, dash + 3, wcslen(dash + 3) + 1);
-    }
-    wchar_t *br = wcschr(t, L'(');
-    if (br && (wcsstr(br, L"Live") || wcsstr(br, L"DJ") ||
-               wcsstr(br, L"现场") || wcsstr(br, L"版"))) *br = 0;
-}
-
-/* ---- 歌曲类型 → 情绪状态: 按歌名关键词映射, 同时给出情绪短句 ---- */
-static int song_mood(const wchar_t *t, wchar_t *out, size_t osz) {
-    static const struct { const wchar_t *kw; int st; const wchar_t *say; } rules[] = {
-        { L"DJ",    17, L"跳起来~" },     { L"蹦迪",  17, L"嗨起来！" },
-        { L"舞",    17, L"想跳舞~" },     { L"摇滚",  10, L"好燃！" },
-        { L"燃",    10, L"热血了！" },    { L"战场",  10, L"气势来了" },
-        { L"失恋",   6, L"好难过…" },     { L"眼泪",   6, L"想哭了…" },
-        { L"伤感",   6, L"有点感伤" },    { L"想念",   6, L"在想念吗" },
-        { L"遗憾",   6, L"有点遗憾" },    { L"爱",    14, L"好甜呀~" },
-        { L"喜欢",  14, L"脸红了~" },     { L"甜",    14, L"甜甜的~" },
-        { L"暗恋",  14, L"嘿嘿~" },       { L"K歌",    9, L"一起唱！" },
-        { L"演唱会", 9, L"想合唱~" },     { L"海",    11, L"像在海里" },
-        { L"浪",    11, L"哗啦啦~" },     { L"鱼",    11, L"我的同类！" },
-        { L"鲸",    11, L"鲸鱼伙伴！" },  { L"月光",  15, L"好有意境" },
-        { L"雨",    15, L"听雨发呆…" },   { L"夜",     4, L"有点困…" },
-        { L"摇篮",   4, L"想睡觉…" },     { L"安静",   4, L"静静听~" },
-        { L"钢琴",  15, L"真好听~" },     { L"古风",  15, L"好有古韵" },
-    };
-    for (size_t i = 0; i < sizeof rules / sizeof rules[0]; i++) {
-        if (wcsstr(t, rules[i].kw)) {
-            wcsncpy(out, rules[i].say, osz - 1);
-            out[osz - 1] = 0;
-            return rules[i].st;
-        }
-    }
-    static const wchar_t *a[] = { L"真好听~", L"一起听吧", L"节奏不错", L"晃了晃~" };
-    wcsncpy(out, pick(a, 4), osz - 1);
-    out[osz - 1] = 0;
-    return 8;                                  /* 默认: 听音乐 */
-}
-
 static void song_poll(void) {
-    wchar_t artist[200] = { 0 }, title[200] = { 0 };
-    if (!song_read(artist, 200, title, 200)) { g_logStale++; return; }
-    g_logStale = 0;
-    song_clean(title);
-    if (!title[0] || wcscmp(title, g_lastSong) == 0) return;
-    wcsncpy(g_lastSong, title, 199); g_lastSong[199] = 0;
-
-    wchar_t emo[64] = { 0 };
-    int mood = song_mood(title, emo, 64);
-    wchar_t msg[460];
-    if (artist[0] && wcsstr(title, artist) == NULL)
-        _snwprintf(msg, 459, L"♪ %s · %s", title, emo);
-    else
-        _snwprintf(msg, 459, L"♪ %s · %s", title, emo);
-    msg[459] = 0;
-
-    /* 正在被拖 / 刚被摸: 不打断交互, 只显示歌名气泡 */
-    if (g_drag || g_state == 14 || g_state == 2) {
-        bubble_show(msg);
-    } else {
-        set_state(mood, 70 + rand() % 40);
-        g_songLeft = 90;                       /* 情绪驻留约 10 秒 */
-        bubble_show(msg);
+    wchar_t artist[80] = { 0 }, title[120] = { 0 };
+    if (!song_read_log(artist, 80, title, 120)) { g_logStale++; return; }
+    /* 日志里的歌名有时带 "歌手 - " 前缀, 去掉 */
+    wchar_t *dash = wcsstr(title, L" - ");
+    if (dash && artist[0] && wcsstr(dash + 3, artist) == NULL) {
+        memmove(title, dash + 3, (wcslen(dash + 3) + 1) * sizeof(wchar_t));
     }
+    if (!title[0]) return;
+    /* 去掉标题尾部的 " -" 残留 */
+    size_t tl = wcslen(title);
+    while (tl && (title[tl-1] == L' ' || title[tl-1] == L'-')) title[--tl] = 0;
+
+    wchar_t key[220];
+    _snwprintf(key, 219, L"%s|%s", artist, title); key[219] = 0;
+    if (wcscmp(key, g_lastSong) == 0) return;   /* 同一首: 不重复决策 */
+    wcsncpy(g_lastSong, key, 199); g_lastSong[199] = 0;
+    g_logStale = 0;
+
+    /* 交给人格评分 */
+    BrainReaction r = brain_on_song(artist, title);
+    if (r.level == 0) return;                   /* 沉默: 大多数歌 */
+
+    /* 正在交互时不切状态, 只显示气泡 */
+    if (g_drag || g_state == 14 || g_state == 2) {
+        if (r.text[0]) bubble_show(r.text);
+        return;
+    }
+    if (r.level == 2) {
+        set_state(r.state, 70 + rand() % 40);
+        g_songLeft = 90;                        /* 情绪驻留约 10 秒 */
+    }
+    if (r.text[0]) bubble_show(r.text);
 }
 
 /* ---------------- 位置记忆 ---------------- */
@@ -679,7 +662,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_drag = 0;
         ReleaseCapture();
         /* 纯单击 = 摸一摸 → 害羞(捂脸红晕); 双击才是喂饭 */
-        if (!g_dragMoved && g_state != 2) { aff_change(3); say_pet(); set_state(14, 24); }
+        if (!g_dragMoved && g_state != 2) { aff_change(3); brain_on_pet(); say_pet(); set_state(14, 24); }
         else if (g_dragMoved && g_state == 13) set_state(0, 30);  /* 拖完 → 回待机 */
         return 0;
     /* ---- 单击(抬起且未拖动) = 摸一摸 → 害羞 ---- */
@@ -753,6 +736,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             _snprintf(b, sizeof b, "%d", day_no());
             WritePrivateProfileStringA("pet", "last_day", b, g_ini);
         }
+        brain_save_all();                     /* v16: 保存歌曲记忆 */
         if (g_bub) DestroyWindow(g_bub);
         PostQuitMessage(0);
         return 0;
@@ -844,10 +828,27 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE prev, LPSTR cmd, int show) {
         g_lastDay = 0;
         GetPrivateProfileStringA("pet", "last_day", "", b, sizeof b, g_ini);
         if (b[0]) g_lastDay = atoi(b);
-        /* 歌词插件日志: exe 在 AddIn\, 日志在 AddIn\lyrics-server\log\ */
+        /* 歌词插件日志目录 */
         char dir[MAX_PATH];
         _snprintf(dir, sizeof dir, "%slyrics-server\\log", exe);
         strncpy(g_logDir, dir, MAX_PATH - 1);
+        g_logDir[MAX_PATH - 1] = 0;
+
+        /* v16: 音乐人格初始化(曲库索引 + 喜好配置 + 记忆表) */
+        char iniUtf8[MAX_PATH * 3], libUtf8[MAX_PATH * 3];
+        strncpy(iniUtf8, g_ini, sizeof iniUtf8 - 1);   /* g_ini 已是 char*(ANSI/ASCII 路径) */
+        iniUtf8[sizeof iniUtf8 - 1] = 0;
+        /* Music.library 在项目根: exe 在 AddIn\, 上一级即项目根 */
+        char root[MAX_PATH];
+        strncpy(root, exe, sizeof root - 1);
+        root[MAX_PATH - 1] = 0;
+        /* exe = "D:\TTPlayer\AddIn\" → 去掉末尾 "AddIn\" 得到项目根 */
+        size_t rl = strlen(root);
+        while (rl > 0 && (root[rl-1] == '\\' || root[rl-1] == '/')) root[--rl] = 0;
+        char *bs = strrchr(root, '\\');
+        if (bs) *(bs + 1) = 0;                  /* 保留 "D:\TTPlayer\" */
+        _snprintf(libUtf8, sizeof libUtf8, "%sMusic.library", root);
+        brain_init(iniUtf8, libUtf8, g_aff);
     }
 
     /* 托盘常驻 */
