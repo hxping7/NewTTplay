@@ -14,7 +14,7 @@
 | `TTPlayer.exe` | 播放器主程序（原版，未修改） |
 | `Skin/DeepSeekWhale.skn` | **主皮肤包**，深蓝 + 鲸鱼主题，含主窗/歌词窗/均衡器/播放列表四个窗口的美术 |
 | `Skin/DeepSeekWhale-var*.skn` | 播放列表右上角 logo 的四个配色变体（渐变蓝 / 扁平 / 辉光 / 剪影） |
-| `AddIn/NTTWhale.exe` | 鲸鱼娘桌面宠物，18 种状态动画（待机/摇尾/游泳/K歌/睡觉/投喂…） |
+| `AddIn/NTTWhale.exe` | 鲸鱼娘桌面宠物，18 种状态动画 + 气泡台词 + 好感度记忆 + 歌曲类型情绪联动（听歌时按歌名切换跳舞/伤心/害羞…） |
 | `AddIn/NTTWhale-src/` | 桌宠**完整源码**（`whale.c` + `whale.rc` + 18 组状态 BMP），可重新编译 |
 | `AddIn/lyrics-server/` | 本地歌词服务器 + `ttp_lrcsh` 插件源码（Node.js + C） |
 | `tools/skin/` | 皮肤位图构建工具（纯 Python，零依赖）：BMP/PNG 编解码、九宫格拉伸仿真、logo 变体、打包 |

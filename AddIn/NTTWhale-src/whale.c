@@ -18,6 +18,9 @@
  * 资源: 1..18 RCDATA = idle/walk/feed/eat/sleep/happy/sad/work/music/ktv/angry/swim/greet/drag/shy/think/proud/dance.bmp
  *       横排条带, 单帧 128x128, 品红键控
  * 编译(绕过火绒编译查杀): gcc -o NTTWhale.dat ... && ren NTTWhale.dat NTTWhale.exe
+ * v15 智能交互版(2026-11-22): 气泡台词窗 + 好感度记忆 + 歌曲类型情绪联动。
+ *       气泡是独立 WS_EX_TRANSPARENT 分层窗, 不影响本体拖动/帧逻辑;
+ *       歌名来自歌词插件的当日日志(搜索 歌手/歌名 行), 不依赖 HTTP 与插件改动。
  */
 #define UNICODE
 #define _UNICODE
@@ -26,9 +29,12 @@
 #include <tlhelp32.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <wchar.h>
 
 #define FRM 128
 #define NST 18
+#define BUB_W 320                   /* 气泡窗宽 */
+#define BUB_H 62                    /* 气泡窗高(含下方尖角) */
 #define WM_TRAY (WM_USER + 200)
 #define WM_SETSTATE (WM_APP + 1)   /* 外部可发此消息按状态号切换动画: wParam=状态号(0..17), lParam=驻留帧数 */
 #define ID_TRAY 7
@@ -77,6 +83,22 @@ static int g_followTT;              /* 1=随 TTPlayer 启停联动 */
 static int g_ttSeen;                /* 检测到 TTPlayer 在运行 */
 static POINT g_dragPt, g_dragOff;   /* 按下光标位 / 按下点-窗口原点偏移 */
 static NOTIFYICONDATAW g_nid;
+
+/* ---- v15 智能交互 ---- */
+static HWND g_bub;                  /* 气泡窗(透明+鼠标穿透) */
+static HFONT g_bubFont;
+static wchar_t g_bubText[160];      /* 当前气泡文字 */
+static int g_bubLeft;               /* 气泡剩余 tick(110ms) */
+static int g_aff;                   /* 好感度 0..100 */
+static int g_lastDay;               /* 上次见面的日期序号(用于久别问候) */
+static wchar_t g_lastSong[200];     /* 上次检测到的歌名(切歌判定) */
+static int g_songLeft;              /* 歌曲情绪驻留 tick */
+static int g_logStale;              /* 连续读不到新日志的计数(>阈值则清歌名) */
+static char g_logDir[MAX_PATH];     /* 歌词插件日志目录 */
+
+/* 前向声明(状态机 rand_behavior 早于台词/歌曲函数定义) */
+static void say_greet(void);
+static void say_idle(void);
 
 /* 菜单文案一律用 L"中文" 宽字面量直接写。
  * 不要再用 "\xNN" 手写 UTF-8 字节——那是逐字节凭记忆拼的, 拼错一位就变成
@@ -162,8 +184,13 @@ static void wander(void) {
 }
 
 static void rand_behavior(void) {
+    /* 歌曲情绪驻留期内: 减少随机跳转, 让"被这首歌带动"的状态演完 */
+    if (g_songLeft > 0) { g_songLeft--; return; }
     int r = rand() % 100;
-    if (r < 20)      set_state(0, 30 + rand() % 40);           /* 待机(呼吸循环) */
+    /* 好感度影响: 亲近时更多问候/傲娇, 生疏时更多不开心 */
+    if (g_aff >= 75 && r >= 90) { say_greet(); set_state(12, 40); return; }
+    if (g_aff < 25 && r >= 92)  { set_state(6, 48); return; }
+    if (r < 20)      { if (rand() % 4 == 0) say_idle(); set_state(0, 30 + rand() % 40); }  /* 待机(呼吸循环) */
     else if (r < 36) { g_dir = (rand() % 2) ? 1 : -1; set_state(1, 30 + rand() % 50); }
     else if (r < 44) set_state(2, 36);                          /* 被投喂 */
     else if (r < 54) set_state(4, 60 + rand() % 60);            /* 睡觉 */
@@ -179,6 +206,257 @@ static void rand_behavior(void) {
     else if (r < 97) set_state(15, 40);                         /* 思考 */
     else if (r < 98) set_state(16, 40);                         /* 傲娇得意 */
     else if (r < 100) set_state(17, 48);                        /* 摇尾巴跳舞 */
+}
+
+/* ================= v15 智能交互 ================= */
+/* ---- 气泡: 独立分层窗, 鼠标穿透, 不干扰本体拖动 ---- */
+static void bubble_place(void) {
+    if (!g_bub) return;
+    RECT r; GetWindowRect(g_wnd, &r);
+    int x = r.left + FRM / 2 - BUB_W / 2;
+    int y = r.top - BUB_H + 10;               /* 尖角指向角色头顶 */
+    if (y < 4) y = r.top + FRM - 10;           /* 顶到屏幕上边则改放脚下 */
+    SetWindowPos(g_bub, NULL, x, y, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static void bubble_show(const wchar_t *txt) {
+    if (!g_bub || !txt || !txt[0]) return;
+    wcsncpy(g_bubText, txt, 159);
+    g_bubText[159] = 0;
+    g_bubLeft = 34;                            /* 约 3.7 秒 */
+    bubble_place();
+    ShowWindow(g_bub, SW_SHOWNOACTIVATE);
+    InvalidateRect(g_bub, NULL, FALSE);
+}
+
+static void bubble_tick(void) {
+    if (!g_bub || g_bubLeft <= 0) return;
+    if (--g_bubLeft <= 0) {
+        g_bubText[0] = 0;
+        ShowWindow(g_bub, SW_HIDE);
+    }
+}
+
+static LRESULT CALLBACK BubbleProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    (void)w; (void)l;
+    if (m == WM_PAINT) {
+        PAINTSTRUCT ps;
+        HDC dc = BeginPaint(h, &ps);
+        /* 圆角气泡 + 底部尖角 + 淡蓝描边 */
+        HBRUSH br = CreateSolidBrush(RGB(255, 255, 255));
+        HPEN pen = CreatePen(PS_SOLID, 1, RGB(120, 160, 205));
+        HBRUSH oldBr = (HBRUSH)SelectObject(dc, br);
+        HPEN oldPen = (HPEN)SelectObject(dc, pen);
+        RoundRect(dc, 6, 4, BUB_W - 6, BUB_H - 16, 12, 12);
+        POINT tri[3] = { { BUB_W / 2 - 10, BUB_H - 18 },
+                         { BUB_W / 2 + 10, BUB_H - 18 },
+                         { BUB_W / 2,      BUB_H - 4  } };
+        HBRUSH br2 = CreateSolidBrush(RGB(255, 255, 255));
+        HBRUSH oldBr2 = (HBRUSH)SelectObject(dc, br2);
+        BeginPath(dc);
+        MoveToEx(dc, tri[0].x, tri[0].y, NULL);
+        LineTo(dc, tri[1].x, tri[1].y);
+        LineTo(dc, tri[2].x, tri[2].y);
+        CloseFigure(dc);
+        EndPath(dc);
+        FillPath(dc);
+        SelectObject(dc, oldBr2);
+        DeleteObject(br2);
+        SelectObject(dc, oldPen);
+        SelectObject(dc, oldBr);
+        DeleteObject(pen);
+        DeleteObject(br);
+        if (g_bubText[0]) {
+            HFONT oldFont = (HFONT)SelectObject(dc, g_bubFont);
+            SetTextColor(dc, RGB(30, 45, 80));
+            SetBkMode(dc, TRANSPARENT);
+            RECT rc = { 10, 6, BUB_W - 10, BUB_H - 18 };
+            DrawTextW(dc, g_bubText, -1, &rc,
+                      DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            SelectObject(dc, oldFont);
+        }
+        EndPaint(h, &ps);
+        return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+/* ---- 台词池: 同一状态按触发源给不同说法 ---- */
+static const wchar_t *pick(const wchar_t *const *arr, int n) {
+    return arr[rand() % n];
+}
+static void say_idle(void) {
+    static const wchar_t *a[] = { L"今天也要元气满满~", L"(打了个小哈欠)",
+        L"发呆中…", L"窗外天气真好呢", L"悄悄深呼吸~" };
+    bubble_show(pick(a, 5));
+}
+static void say_pet(void) {
+    if (g_aff >= 70) {
+        static const wchar_t *a[] = { L"最喜欢摸摸了~", L"嘿嘿，好舒服~",
+            L"再摸一下嘛！", L"(眯起眼睛蹭蹭)" };
+        bubble_show(pick(a, 4));
+    } else if (g_aff < 30) {
+        static const wchar_t *a[] = { L"哼，别碰我", L"还不熟，别摸",
+            L"(躲开一点点)" };
+        bubble_show(pick(a, 3));
+    } else {
+        static const wchar_t *a[] = { L"呀，被摸到了", L"有点害羞…",
+            L"谢谢摸摸~", L"(捂脸)" };
+        bubble_show(pick(a, 4));
+    }
+}
+static void say_feed(void) {
+    if (g_aff >= 70) {
+        static const wchar_t *a[] = { L"你最好啦！开动~", L"哇！是大餐！",
+            L"我最喜欢你喂我~" };
+        bubble_show(pick(a, 3));
+    } else {
+        static const wchar_t *a[] = { L"啊——张嘴！", L"谢谢投喂~",
+            L"好香呀", L"(开心地端起碗)" };
+        bubble_show(pick(a, 4));
+    }
+}
+static void say_drag(void) {
+    static const wchar_t *a[] = { L"呀！放我下来~", L"头晕头晕…",
+        L"你要带我去哪里？", L"(抓住边缘)" };
+    bubble_show(pick(a, 4));
+}
+static void say_greet(void) {
+    if (g_aff >= 70) {
+        static const wchar_t *a[] = { L"你回来啦！等你好久~", L"最想见的就是你！" };
+        bubble_show(pick(a, 2));
+    } else {
+        static const wchar_t *a[] = { L"嗨，来啦~", L"今天也一起加油吧", L"你好呀！" };
+        bubble_show(pick(a, 3));
+    }
+}
+static void aff_change(int d) {
+    g_aff += d;
+    if (g_aff < 0) g_aff = 0;
+    if (g_aff > 100) g_aff = 100;
+}
+
+/* ---- 日期序号: 只用于判断"隔了几天" ---- */
+static int day_no(void) {
+    SYSTEMTIME st; GetLocalTime(&st);
+    return (int)(st.wYear * 372 + st.wMonth * 31 + st.wDay);
+}
+
+/* ---- 歌词插件日志: 取最后一条"搜索 歌手：X 歌名：Y" ---- */
+static int song_read(wchar_t *artist, size_t asz, wchar_t *title, size_t tsz) {
+    SYSTEMTIME st; GetLocalTime(&st);
+    char path[MAX_PATH];
+    _snprintf(path, sizeof path, "%s\\%04d-%02d-%02d.txt",
+              g_logDir, st.wYear, st.wMonth, st.wDay);
+    HANDLE f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) return 0;
+    DWORD sz = GetFileSize(f, NULL);
+    if (sz <= 0 || sz > 4 * 1024 * 1024) { CloseHandle(f); return 0; }
+    /* 从尾部往前读 32KB, 找最后一条歌名行 */
+    DWORD back = sz > 32768 ? 32768 : sz;
+    SetFilePointer(f, (LONG)(sz - back), NULL, FILE_BEGIN);
+    char *buf = (char *)malloc(back + 1);
+    if (!buf) { CloseHandle(f); return 0; }
+    DWORD rd = 0;
+    ReadFile(f, buf, back, &rd, NULL);
+    CloseHandle(f);
+    buf[rd] = 0;
+
+    /* 逐行扫描, 记录最后一条匹配的 */
+    char *best = NULL;
+    char *p = buf;
+    while (p && *p) {
+        char *eol = strchr(p, '\n');
+        if (eol) *eol = 0;
+        if (strstr(p, "搜索 歌手：") && strstr(p, "歌名：")) best = p;
+        p = eol ? eol + 1 : NULL;
+    }
+    if (!best) { free(buf); return 0; }
+
+    char *ta = strstr(best, "搜索 歌手：") + strlen("搜索 歌手：");
+    char *tt = strstr(best, "歌名：") + strlen("歌名：");
+    /* 截断到行尾 */
+    char *ea = strchr(ta, '\r'); if (!ea) ea = strchr(ta, '\n');
+    char *et = strchr(tt, '\r'); if (!et) et = strchr(tt, '\n');
+    if (ea) *ea = 0;
+    if (et) *et = 0;
+    /* UTF-8 → UTF-16 (日志里的中文是 UTF-8) */
+    MultiByteToWideChar(CP_UTF8, 0, ta, -1, artist, (int)asz);
+    MultiByteToWideChar(CP_UTF8, 0, tt, -1, title, (int)tsz);
+    free(buf);
+    return title[0] != 0;
+}
+
+/* ---- 歌名清洗: 去掉 "歌手 - " 前缀与音质/版本后缀 ---- */
+static void song_clean(wchar_t *t) {
+    wchar_t *dash = wcsstr(t, L" - ");
+    if (dash && !wcsstr(dash + 3, L" - ")) {
+        /* 仅在 " - " 之后还有内容时视为 歌手-歌名 */
+        if (dash[3]) wcsncpy(t, dash + 3, wcslen(dash + 3) + 1);
+    }
+    wchar_t *br = wcschr(t, L'(');
+    if (br && (wcsstr(br, L"Live") || wcsstr(br, L"DJ") ||
+               wcsstr(br, L"现场") || wcsstr(br, L"版"))) *br = 0;
+}
+
+/* ---- 歌曲类型 → 情绪状态: 按歌名关键词映射, 同时给出情绪短句 ---- */
+static int song_mood(const wchar_t *t, wchar_t *out, size_t osz) {
+    static const struct { const wchar_t *kw; int st; const wchar_t *say; } rules[] = {
+        { L"DJ",    17, L"跳起来~" },     { L"蹦迪",  17, L"嗨起来！" },
+        { L"舞",    17, L"想跳舞~" },     { L"摇滚",  10, L"好燃！" },
+        { L"燃",    10, L"热血了！" },    { L"战场",  10, L"气势来了" },
+        { L"失恋",   6, L"好难过…" },     { L"眼泪",   6, L"想哭了…" },
+        { L"伤感",   6, L"有点感伤" },    { L"想念",   6, L"在想念吗" },
+        { L"遗憾",   6, L"有点遗憾" },    { L"爱",    14, L"好甜呀~" },
+        { L"喜欢",  14, L"脸红了~" },     { L"甜",    14, L"甜甜的~" },
+        { L"暗恋",  14, L"嘿嘿~" },       { L"K歌",    9, L"一起唱！" },
+        { L"演唱会", 9, L"想合唱~" },     { L"海",    11, L"像在海里" },
+        { L"浪",    11, L"哗啦啦~" },     { L"鱼",    11, L"我的同类！" },
+        { L"鲸",    11, L"鲸鱼伙伴！" },  { L"月光",  15, L"好有意境" },
+        { L"雨",    15, L"听雨发呆…" },   { L"夜",     4, L"有点困…" },
+        { L"摇篮",   4, L"想睡觉…" },     { L"安静",   4, L"静静听~" },
+        { L"钢琴",  15, L"真好听~" },     { L"古风",  15, L"好有古韵" },
+    };
+    for (size_t i = 0; i < sizeof rules / sizeof rules[0]; i++) {
+        if (wcsstr(t, rules[i].kw)) {
+            wcsncpy(out, rules[i].say, osz - 1);
+            out[osz - 1] = 0;
+            return rules[i].st;
+        }
+    }
+    static const wchar_t *a[] = { L"真好听~", L"一起听吧", L"节奏不错", L"晃了晃~" };
+    wcsncpy(out, pick(a, 4), osz - 1);
+    out[osz - 1] = 0;
+    return 8;                                  /* 默认: 听音乐 */
+}
+
+static void song_poll(void) {
+    wchar_t artist[200] = { 0 }, title[200] = { 0 };
+    if (!song_read(artist, 200, title, 200)) { g_logStale++; return; }
+    g_logStale = 0;
+    song_clean(title);
+    if (!title[0] || wcscmp(title, g_lastSong) == 0) return;
+    wcsncpy(g_lastSong, title, 199); g_lastSong[199] = 0;
+
+    wchar_t emo[64] = { 0 };
+    int mood = song_mood(title, emo, 64);
+    wchar_t msg[460];
+    if (artist[0] && wcsstr(title, artist) == NULL)
+        _snwprintf(msg, 459, L"♪ %s · %s", title, emo);
+    else
+        _snwprintf(msg, 459, L"♪ %s · %s", title, emo);
+    msg[459] = 0;
+
+    /* 正在被拖 / 刚被摸: 不打断交互, 只显示歌名气泡 */
+    if (g_drag || g_state == 14 || g_state == 2) {
+        bubble_show(msg);
+    } else {
+        set_state(mood, 70 + rand() % 40);
+        g_songLeft = 90;                       /* 情绪驻留约 10 秒 */
+        bubble_show(msg);
+    }
 }
 
 /* ---------------- 位置记忆 ---------------- */
@@ -237,6 +515,8 @@ static void pet_show(int show) {
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     } else {
         ShowWindow(g_wnd, SW_HIDE);
+        g_bubLeft = 0;
+        if (g_bub) ShowWindow(g_bub, SW_HIDE);
     }
 }
 
@@ -301,6 +581,15 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         g_tick++;
+        bubble_tick();                             /* 气泡倒计时 */
+        /* 歌曲检测: 每 15 tick(约 1.6s) 读一次歌词日志; 无日志超过 40 次则清歌名 */
+        if (g_tick % 15 == 0) {
+            song_poll();
+            if (g_logStale > 40 && g_lastSong[0]) {
+                g_lastSong[0] = 0;
+                g_logStale = 0;
+            }
+        }
         if (--g_stateLeft <= 0) rand_behavior();
         /* 按当前状态的 ticks 决定何时推进到下一帧 */
         if (++g_acc >= g_sh[g_state].ticks) {
@@ -308,6 +597,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             g_frame = (g_frame + 1) % g_sh[g_state].nseq;
         }
         if (g_state == 1) wander();
+        bubble_place();                            /* 气泡跟随本体 */
         InvalidateRect(h, NULL, FALSE);
         return 0;
     }
@@ -333,6 +623,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (l == WM_RBUTTONUP || l == WM_LBUTTONUP) {
             POINT pt;
             GetCursorPos(&pt);
+            bubble_show(L"想让我做什么？");
             HMENU mn = CreatePopupMenu();
             AppendMenuW(mn, MF_STRING, IDM_FEED, L"喂饭");
             AppendMenuW(mn, MF_STRING, IDM_SLEEP, L"睡觉");
@@ -378,7 +669,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         GetCursorPos(&pt);
         if (abs(pt.x - g_dragPt.x) + abs(pt.y - g_dragPt.y) > 4) {
             /* 首次判定为拖动 → 切到「被拖拽」状态(惊讶悬空, 尾巴摇摆) */
-            if (!g_dragMoved) { g_dragMoved = 1; set_state(13, 9999); }
+            if (!g_dragMoved) { g_dragMoved = 1; set_state(13, 9999); say_drag(); }
         }
         SetWindowPos(h, NULL, pt.x - g_dragOff.x, pt.y - g_dragOff.y,
                      0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
@@ -388,11 +679,12 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_drag = 0;
         ReleaseCapture();
         /* 纯单击 = 摸一摸 → 害羞(捂脸红晕); 双击才是喂饭 */
-        if (!g_dragMoved && g_state != 2) set_state(14, 24);
+        if (!g_dragMoved && g_state != 2) { aff_change(3); say_pet(); set_state(14, 24); }
         else if (g_dragMoved && g_state == 13) set_state(0, 30);  /* 拖完 → 回待机 */
         return 0;
     /* ---- 单击(抬起且未拖动) = 摸一摸 → 害羞 ---- */
     case WM_LBUTTONDBLCLK:
+        aff_change(5); say_feed();
         set_state(2, 36);              /* 双击 = 喂饭 → 张嘴等投喂 */
         return 0;
     case WM_RBUTTONUP: {
@@ -427,9 +719,9 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         AppendMenuW(mn, MF_STRING, IDM_EXIT, L"退出");
         int cmd = TrackPopupMenu(mn, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, h, NULL);
         DestroyMenu(mn);
-        if (cmd == IDM_FEED)   set_state(2, 36);
-        if (cmd == IDM_SLEEP)  set_state(4, 90);
-        if (cmd == IDM_PLAY)   set_state(5, 24);
+        if (cmd == IDM_FEED)   { aff_change(5); say_feed(); set_state(2, 36); }
+        if (cmd == IDM_SLEEP)  { bubble_show(L"晚安，做个好梦~"); set_state(4, 90); }
+        if (cmd == IDM_PLAY)   { bubble_show(L"一起玩吧！"); set_state(5, 24); }
         if (cmd == IDM_SAD)    set_state(6, 48);
         if (cmd == IDM_WORK)   set_state(7, 80);
         if (cmd == IDM_MUSIC)  set_state(8, 60);
@@ -454,6 +746,14 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         KillTimer(h, 2);
         tray_del();
         pos_save();
+        {
+            char b[32];
+            _snprintf(b, sizeof b, "%d", g_aff);
+            WritePrivateProfileStringA("pet", "affinity", b, g_ini);
+            _snprintf(b, sizeof b, "%d", day_no());
+            WritePrivateProfileStringA("pet", "last_day", b, g_ini);
+        }
+        if (g_bub) DestroyWindow(g_bub);
         PostQuitMessage(0);
         return 0;
     }
@@ -510,11 +810,44 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE prev, LPSTR cmd, int show) {
     SetLayeredWindowAttributes(g_wnd, RGB(255, 0, 255), 0, LWA_COLORKEY);
     pos_load();
 
+    /* 气泡窗: 透明键控 + 鼠标穿透, 不抢本体的点击/拖动 */
+    {
+        WNDCLASSW bw = { 0 };
+        bw.lpfnWndProc = BubbleProc;
+        bw.hInstance = hi;
+        bw.lpszClassName = L"NTTWhaleBubble";
+        bw.hCursor = LoadCursor(NULL, IDC_ARROW);
+        RegisterClassW(&bw);
+        g_bub = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW |
+                                WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
+                                L"NTTWhaleBubble", L"", WS_POPUP, 0, 0, BUB_W, BUB_H,
+                                NULL, NULL, hi, NULL);
+        SetLayeredWindowAttributes(g_bub, RGB(255, 0, 255), 0, LWA_COLORKEY);
+        g_bubFont = CreateFontW(-16, 0, 0, 0, FW_NORMAL, 0, 0, 0,
+                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                                DEFAULT_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei");
+    }
+
     /* 读取配置: 是否随 TTPlayer 启停联动 (默认开启) */
     {
         char fb[8] = "";
         GetPrivateProfileStringA("pet", "follow_tt", "1", fb, sizeof fb, g_ini);
         g_followTT = (fb[0] == '1');
+    }
+    /* v15: 好感度 / 上次见面 / 歌词日志目录 */
+    {
+        char b[32] = "";
+        GetPrivateProfileStringA("pet", "affinity", "50", b, sizeof b, g_ini);
+        g_aff = atoi(b);
+        if (g_aff < 0) g_aff = 0;
+        if (g_aff > 100) g_aff = 100;
+        g_lastDay = 0;
+        GetPrivateProfileStringA("pet", "last_day", "", b, sizeof b, g_ini);
+        if (b[0]) g_lastDay = atoi(b);
+        /* 歌词插件日志: exe 在 AddIn\, 日志在 AddIn\lyrics-server\log\ */
+        char dir[MAX_PATH];
+        _snprintf(dir, sizeof dir, "%slyrics-server\\log", exe);
+        strncpy(g_logDir, dir, MAX_PATH - 1);
     }
 
     /* 托盘常驻 */
@@ -529,6 +862,27 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE prev, LPSTR cmd, int show) {
         ShowWindow(g_wnd, SW_SHOWNOACTIVATE);
     }
     set_state(0, 60);
+
+    /* 见面记忆: 久别重逢 / 每天第一次见面给不同问候 */
+    {
+        int today = day_no();
+        int gap = g_lastDay ? today - g_lastDay : -1;
+        if (gap < 0) {
+            if (g_aff >= 70) bubble_show(L"初次见面，请多关照！以后常来找我玩~");
+            else bubble_show(L"嗨，我是鲸鱼娘~ 点点我可以摸摸头");
+        } else if (gap >= 14) {
+            bubble_show(g_aff >= 70 ? L"好久好久不见！我一直在等你呢~" : L"好久不见！最近还好吗？");
+            aff_change(2);
+        } else if (gap >= 1) {
+            const wchar_t *a[] = { L"新的一天，一起加油吧！", L"你来啦~ 今天想听什么歌？" };
+            bubble_show(pick(a, 2));
+        }
+        char b[32];
+        _snprintf(b, sizeof b, "%d", g_aff);
+        WritePrivateProfileStringA("pet", "affinity", b, g_ini);
+        _snprintf(b, sizeof b, "%d", today);
+        WritePrivateProfileStringA("pet", "last_day", b, g_ini);
+    }
 
     MSG msg;
     while (GetMessageW(&msg, NULL, 0, 0)) {
