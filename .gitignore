@@ -67,6 +67,7 @@ AddIn/lyrics-server/log/
 
 # ---- 编译产物 ----
 *.obj
+*.dat
 *.pdb
 *.ilk
 *.exp
