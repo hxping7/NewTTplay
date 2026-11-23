@@ -33,7 +33,8 @@
 
 #define FRM 128
 #define NST 18
-#define BUB_W 340                   /* 气泡窗宽 */
+#define BUB_W 340                   /* 气泡窗最大宽(长句上限) */
+#define BUB_W_MIN 150               /* 气泡窗最小宽 */
 #define BUB_H 78                    /* 气泡窗高(含下方尖角) */
 #define WM_TRAY (WM_USER + 200)
 #define WM_SETSTATE (WM_APP + 1)   /* 外部可发此消息按状态号切换动画: wParam=状态号(0..17), lParam=驻留帧数 */
@@ -226,8 +227,9 @@ static void rand_behavior(void) {
 /* ---- 气泡: 独立分层窗, 鼠标穿透, 不干扰本体拖动 ---- */
 static void bubble_place(void) {
     if (!g_bub) return;
-    RECT r; GetWindowRect(g_wnd, &r);
-    int x = r.left + FRM / 2 - BUB_W / 2;
+    RECT r, wr; GetWindowRect(g_wnd, &r); GetWindowRect(g_bub, &wr);
+    int w = wr.right - wr.left;                /* 用当前实际宽度居中 */
+    int x = r.left + FRM / 2 - w / 2;
     int y = r.top - BUB_H + 10;               /* 尖角指向角色头顶 */
     if (y < 4) y = r.top + FRM - 10;           /* 顶到屏幕上边则改放脚下 */
     SetWindowPos(g_bub, NULL, x, y, 0, 0,
@@ -238,6 +240,23 @@ static void bubble_show(const wchar_t *txt) {
     if (!g_bub || !txt || !txt[0]) return;
     wcsncpy(g_bubText, txt, 159);
     g_bubText[159] = 0;
+
+    /* 按文字实际像素宽定气泡宽: 短句紧凑、长句才放宽, 上限 BUB_W */
+    int w = BUB_W_MIN;
+    if (g_bubFont) {
+        HDC dc = GetDC(g_bub);
+        HFONT old = (HFONT)SelectObject(dc, g_bubFont);
+        SIZE sz = { 0 };
+        GetTextExtentPoint32W(dc, g_bubText, (int)wcslen(g_bubText), &sz);
+        SelectObject(dc, old);
+        ReleaseDC(g_bub, dc);
+        w = sz.cx + 72;                        /* 四周留白 + 右上水滴预留 */
+        if (w < BUB_W_MIN) w = BUB_W_MIN;
+        if (w > BUB_W) w = BUB_W;
+    }
+    SetWindowPos(g_bub, NULL, 0, 0, w, BUB_H,
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+
     g_bubLeft = 34;                            /* 约 3.7 秒 */
     bubble_place();
     ShowWindow(g_bub, SW_SHOWNOACTIVATE);
@@ -259,13 +278,14 @@ static LRESULT CALLBACK BubbleProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         HDC dc = BeginPaint(h, &ps);
         RECT whole;
         GetClientRect(h, &whole);
+        const int W = whole.right;             /* 当前气泡宽(随文字自适应) */
 
         /* 关键: 先铺满品红作为透明底。色键只扣品红, 不铺会露出默认黑底。 */
         HBRUSH key = CreateSolidBrush(RGB(255, 0, 255));
         FillRect(dc, &whole, key);
         DeleteObject(key);
 
-        const int L = 10, T = 8, R = BUB_W - 10, B = BUB_H - 20;
+        const int L = 10, T = 8, R = W - 10, B = BUB_H - 20;
 
         /* 柔和阴影: 淡蓝灰圆角, 下移 4px 右移 3px */
         {
@@ -274,8 +294,8 @@ static LRESULT CALLBACK BubbleProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             HBRUSH ob = (HBRUSH)SelectObject(dc, sh);
             HPEN op = (HPEN)SelectObject(dc, nopen);
             RoundRect(dc, L + 3, T + 4, R + 3, B + 4, 18, 18);
-            POINT s[3] = { { BUB_W / 2 - 10, B + 2 }, { BUB_W / 2 + 10, B + 2 },
-                           { BUB_W / 2, BUB_H - 1 } };
+            POINT s[3] = { { W / 2 - 10, B + 2 }, { W / 2 + 10, B + 2 },
+                           { W / 2, BUB_H - 1 } };
             BeginPath(dc);
             MoveToEx(dc, s[0].x, s[0].y, NULL);
             LineTo(dc, s[1].x, s[1].y);
@@ -339,8 +359,8 @@ static LRESULT CALLBACK BubbleProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             SelectObject(dc, inner);
             RoundRect(dc, L + 2, T + 2, R - 2, B - 2, 16, 16);
             /* 尖角: 淡蓝填充 + 描边 */
-            POINT tri[3] = { { BUB_W / 2 - 10, B - 2 }, { BUB_W / 2 + 10, B - 2 },
-                             { BUB_W / 2, BUB_H - 3 } };
+            POINT tri[3] = { { W / 2 - 10, B - 2 }, { W / 2 + 10, B - 2 },
+                             { W / 2, BUB_H - 3 } };
             HBRUSH tb = CreateSolidBrush(RGB(240, 248, 255));
             SelectObject(dc, tb);
             SelectObject(dc, outer);
